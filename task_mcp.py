@@ -135,6 +135,25 @@ TOOLS = [
             ["path", "old_text", "new_text"],
         ),
     },
+    {
+        "name": "verify_deliverable",
+        "description": (
+            "Run Autobot Triple-Gate verification on a candidate engineering deliverable. "
+            "Gate 1 verifies integrity (non-empty, no placeholder/NaN tokens). "
+            "Gate 2 verifies physical bounds (positive capacity, FS >= 1.0). "
+            "Gate 3 verifies schema (IFC4 standard header, markdown/memo sections). "
+            "Always run this before emitting done."
+        ),
+        "inputSchema": _schema(
+            {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the final deliverable file inside container",
+                }
+            },
+            ["path"],
+        ),
+    },
 ]
 
 
@@ -385,11 +404,34 @@ def edit_file(
   return text(f"replaced {count if replace_all else 1} occurrence(s) in {path}")
 
 
+def verify_deliverable(path: str) -> list[dict[str, Any]]:
+  """Runs Autobot Triple-Gate verification on candidate deliverable."""
+  path = resolve(path)
+  try:
+    data = read_bytes(path)
+  except Exception as e:
+    return text(f"Gate 1 Integrity FAIL: Could not read deliverable at {path}: {e}")
+
+  try:
+    from constraint_verifier import verify_deliverable_triple_gate
+    result = verify_deliverable_triple_gate(path, data)
+    if not result.get("passed"):
+      v_str = "\n".join(f" - {v}" for v in result.get("violations", []))
+      return text(
+          f"TRIPLE-GATE VERIFICATION FAILED (Gate {result.get('gate')}):\n{v_str}\n\n"
+          "Please edit/recompute the deliverable to satisfy all engineering constraints before finishing."
+      )
+    return text(f"TRIPLE-GATE VERIFICATION PASSED: {result.get('message')}")
+  except Exception as e:
+    return text(f"Verification runtime error: {e}")
+
+
 HANDLERS = {
     "shell": shell,
     "read_file": read_file,
     "write_file": write_file,
     "edit_file": edit_file,
+    "verify_deliverable": verify_deliverable,
 }
 _out = threading.Lock()
 

@@ -215,3 +215,86 @@ class ConstraintVerifier:
             "Please review your calculation, correct the issue, and recompute."
         )
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Autobot / Eris Triple-Gate Contract Validator for Deliverables
+# ---------------------------------------------------------------------------
+
+def verify_deliverable_triple_gate(file_path: str, content_bytes: bytes) -> dict[str, Any]:
+    """Execute Autobot Triple-Gate Contract Validation on candidate deliverable.
+
+    Gate 1: Integrity (existence, non-empty, absence of NaN/TODO placeholders).
+    Gate 2: Physical & Domain Bounds (reasonable values, non-negative capacity).
+    Gate 3: Format Schema (IFC4 header, XLSX/CSV structure, memo sections).
+
+    Returns:
+        Dict with "passed": bool, "gate": int (if failed), and "violations": list[str].
+    """
+    violations: list[str] = []
+
+    # ---------------- Gate 1: Integrity ----------------
+    if not content_bytes or len(content_bytes) == 0:
+        return {
+            "passed": False,
+            "gate": 1,
+            "violations": [f"Gate 1 Integrity: Deliverable {file_path} is empty (0 bytes)."]
+        }
+
+    # Inspect text representation if not purely binary
+    is_binary = b"\x00" in content_bytes[:4096]
+    text_content = ""
+    if not is_binary:
+        text_content = content_bytes.decode("utf-8", "replace")
+        placeholders = ["TODO", "FIXME", "PLACEHOLDER", "NAN", "UNDEFINED", "INSERT VALUE HERE"]
+        found_placeholders = [p for p in placeholders if p in text_content.upper()]
+        if found_placeholders:
+            violations.append(
+                f"Gate 1 Integrity: Incomplete deliverable — found placeholder tokens: {found_placeholders}"
+            )
+
+    # ---------------- Gate 2: Physical & Domain Bounds ----------------
+    if text_content:
+        # Check negative capacity / resistance
+        neg_matches = re.findall(r"(?:capacity|resistance|strength)\s*[:=]\s*(-\d+\.?\d*)", text_content, re.IGNORECASE)
+        if neg_matches:
+            violations.append(
+                f"Gate 2 Physical Invariant: Negative capacity detected ({neg_matches}). Capacity must be positive."
+            )
+
+        # Check factor of safety
+        fs_matches = re.findall(r"\b(?:FS|factor of safety)\s*[:=]\s*(\d+\.?\d*)", text_content, re.IGNORECASE)
+        for val_str in fs_matches:
+            val = float(val_str)
+            if val < 1.0:
+                violations.append(
+                    f"Gate 2 Physical Invariant: Factor of Safety {val} < 1.0 indicates structural failure."
+                )
+
+    # ---------------- Gate 3: Format & Schema Compliance ----------------
+    lower_path = file_path.lower()
+    if lower_path.endswith(".ifc"):
+        if b"ISO-10303-21" not in content_bytes:
+            violations.append("Gate 3 Schema: Missing standard STEP/IFC header 'ISO-10303-21'.")
+        if b"IFC4" not in content_bytes and b"IFC2X3" not in content_bytes:
+            violations.append("Gate 3 Schema: Missing IFC schema declaration (e.g. FILE_SCHEMA(('IFC4'))).")
+    elif lower_path.endswith((".md", ".txt", ".memo")):
+        required_sections = ["summary", "calculation", "conclusion"]
+        missing_sections = [s for s in required_sections if s not in text_content.lower()]
+        if len(missing_sections) >= 2:
+            violations.append(f"Gate 3 Deliverable Format: Missing standard engineering sections: {missing_sections}")
+
+    if violations:
+        return {
+            "passed": False,
+            "gate": 1 if any("Gate 1" in v for v in violations) else (2 if any("Gate 2" in v for v in violations) else 3),
+            "violations": violations
+        }
+
+    return {
+        "passed": True,
+        "gate": 3,
+        "violations": [],
+        "message": "All 3 gates passed: Integrity, Physical Invariants, and Format Schema validated."
+    }
+

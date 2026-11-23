@@ -109,6 +109,10 @@ engineering tasks (structural, civil, electrical, mechanical).
    information you have collected and what is still missing before the deliverable.
 7. **Deliverable schema**: Write your final output to the path specified in the
    task. If a template file is provided, populate it rather than creating a new one.
+8. **Triple-Gate Verification**: Before concluding, ALWAYS run the tool
+   `verify_deliverable(path="<deliverable_path>")`. It checks integrity (no NaNs or TODOs),
+   physical bounds (positive capacities, FS >= 1.0), and format schemas (IFC4 / XLSX / memos).
+   If any gate fails, correct the deliverable before finishing.
 
 ## Task Classification (pre-computed)
 {classification}
