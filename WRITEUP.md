@@ -1,6 +1,6 @@
 # PLE Harness: Engineering-Aware Agent with Deterministic Verification Loops
 
-**Commit SHA:** `7d8fae857e09fab367c49926c3c28b7f370258a1`  
+**Commit SHA:** `11dc6a78c20a90d557e85dac0bd99bf3cee492e0`  
 **GitHub Repo:** `https://github.com/GabuGravin41/PLE-harness`  
 **Target Model:** `google-cloud/gemini-3.8-flash`  
 **License:** Apache-2.0  
@@ -15,7 +15,7 @@ $$s = 0.4\,p + 0.6\,G\,O'$$
 
 Where $p$ is the fraction of soft constraints met, $O'$ is normalized economic efficiency, and $G \in \{0, 1\}$ is a strict binary feasibility gate. If an agent satisfies 95% of individual clauses ($p = 0.95$) and achieves minimum cost ($O' = 1.0$), yet violates a single statutory code clause, physical clearance, or register rule ($G = 0$), its score collapses from $0.98 \to 0.38$. In the unconstrained baseline, 7 of 15 constraint tasks hovered immediately below 0.40. 
 
-Our harness, **PLE-EngAgent**, achieves a **+17.8 point dev-score gain (0.272 → 0.450 on Gemini 3.8 Flash)** by inserting deterministic physics solvers, geometry trims, and an Autobot-style Triple-Gate contract verifier before deliverable registration.
+Our harness, **PLE-EngAgent**, systematically dismantles this 0.40 ceiling by inserting deterministic physics solvers, geometry trims, and an Autobot-style Triple-Gate contract verifier before deliverable registration. On the official public baseline, Gemini 3.8 Flash scores **0.272–0.275**. By mitigating the top zero-score mechanisms (corner self-clashes and missing register rows), this architecture targets the high-impact feasibility gaps that drag mid-tier models down, without escalating token costs.
 
 ---
 
@@ -124,7 +124,7 @@ We evaluated our harness across six model architectures spanning cloud-hosted an
 ### Architectural Cross-Model Findings:
 1. **Universal Benefits:** The Same-Service Corner Trim rule and Register Forfeit audit provided identical raw score boosts across all models, proving that environment traps are model-agnostic.
 2. **Model Divergence:** Claude Opus 5.5 and Gemini 4 Argon excel at multi-sheet document cross-referencing, whereas Gemma 4 26B struggled with multi-file DWG navigation but excelled at isolated Python numeric calculations.
-3. **Pareto Dominance:** Pairing our harness with `google-cloud/gemini-3.8-flash` delivers a score of **0.450** at only **$0.14/task**, yielding a cost-efficiency of 3.21—placing this system firmly on the Stage 2 performance-cost Pareto frontier.
+3. **Pareto Positioning:** Running `google-cloud/gemini-3.8-flash` consumes only **$0.14/task** (vs $0.82 for Opus 5.5), securing maximum run throughput on the Stage 2 performance-cost Pareto frontier.
 
 ---
 
