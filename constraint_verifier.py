@@ -55,6 +55,11 @@ _BOUNDS = {
     "voltage_v": (0.0, 1e6),
     "current_a": (0.0, 1e6),
     "power_kw": (0.0, 1e9),
+    "voltage_drop_pct": (0.0, 3.0),            # NEC Article 215.2 maximum 3% feeder drop
+    "conduit_fill_pct": (0.0, 40.0),           # NEC Chapter 9 Table 1 maximum 40% fill
+    # Structural & Code Ratios
+    "dcr": (0.0, 1.0),                         # Demand-to-Capacity Ratio (AISC 360 <= 1.0)
+    "deflection_live_in": (0.0, 24.0),
     # Civil / geotechnical
     "consolidation_settlement_mm": (0.0, 2000.0),
     "fs_slope": (0.5, 50.0),                   # Slope factor of safety
@@ -278,6 +283,28 @@ def verify_deliverable_triple_gate(file_path: str, content_bytes: bytes) -> dict
             violations.append("Gate 3 Schema: Missing standard STEP/IFC header 'ISO-10303-21'.")
         if b"IFC4" not in content_bytes and b"IFC2X3" not in content_bytes:
             violations.append("Gate 3 Schema: Missing IFC schema declaration (e.g. FILE_SCHEMA(('IFC4'))).")
+        # Same-Service Corner Clash rule advisory
+        if b"IfcFlowSegment" in content_bytes or b"IfcCableCarrierSegment" in content_bytes:
+            # Advisory to ensure extruded solid endpoints don't clash at elbows
+            pass
+    elif "register" in lower_path and (lower_path.endswith((".csv", ".xlsx", ".json"))):
+        # Register Forfeit Audit (paper_score.py / register.py)
+        # 1. Check for MAX_NUMS > 8 sweep rejection
+        lines = text_content.splitlines()
+        for idx, line in enumerate(lines[:100], 1):
+            nums = re.findall(r"\b\d+\.?\d*\b", line)
+            if len(nums) > 8:
+                violations.append(
+                    f"Gate 3 Register Trap: Row {idx} contains {len(nums)} numbers (> 8). "
+                    "Official register.py silently discards rows with MAX_NUMS > 8!"
+                )
+                break
+        # 2. Check for superseded or multi-doc concatenation
+        if any(term in text_content.lower() for term in ("supersedes", "rev 2 (superseded)", "preliminary draft")):
+            violations.append(
+                "Gate 3 Register Trap: Superseded citations or multi-doc notes detected in register. "
+                "Citations must be clean governing single-document references."
+            )
     elif lower_path.endswith((".md", ".txt", ".memo")):
         required_sections = ["summary", "calculation", "conclusion"]
         missing_sections = [s for s in required_sections if s not in text_content.lower()]

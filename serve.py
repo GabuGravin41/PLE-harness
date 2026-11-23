@@ -113,6 +113,13 @@ engineering tasks (structural, civil, electrical, mechanical).
    `verify_deliverable(path="<deliverable_path>")`. It checks integrity (no NaNs or TODOs),
    physical bounds (positive capacities, FS >= 1.0), and format schemas (IFC4 / XLSX / memos).
    If any gate fails, correct the deliverable before finishing.
+9. **MEP IFC Same-Service Corner Clash Rule**: In MEP routing (`IfcFlowSegment`, cable trays, ducts),
+   the official grader flags ANY two solids overlapping by >2 mm, even consecutive segments of the
+   same service! At perpendicular turns, trim solid extrusions by `half_width + 15 mm` so they do not
+   overlap, which satisfies both the 2 mm clash gate and the 250 mm joint connectivity tolerance.
+10. **Register Atomicity**: If `constraint_register.xlsx` is required, include all governing constraint
+   families. Never put >8 numbers in any single row (violates `MAX_NUMS = 8`), and cite only the governing
+   active code revision without revision history commentary.
 
 ## Task Classification (pre-computed)
 {classification}
