@@ -154,6 +154,38 @@ TOOLS = [
             ["path"],
         ),
     },
+    {
+        "name": "record_evidence",
+        "description": (
+            "Record an extracted engineering fact into the persistent Evidence Ledger. "
+            "Tracks provenance, unit, source drawing/document, and confidence (CONFIRMED, ESTIMATED, SUPERSEDED)."
+        ),
+        "inputSchema": _schema(
+            {
+                "fact_name": {"type": "string", "description": "e.g. beam_elevation, soil_friction_angle"},
+                "value": {"type": "string", "description": "Extracted numerical or categorical value"},
+                "unit": {"type": "string", "description": "e.g. m, kPa, A, kW"},
+                "source_file": {"type": "string", "description": "Filename or sheet where fact was found"},
+                "source_locator": {"type": "string", "description": "e.g. Grid B-4, Detail 3/S-101"},
+                "confidence": {"type": "string", "enum": ["CONFIRMED", "ESTIMATED", "SUPERSEDED"]},
+            },
+            ["fact_name", "value", "unit", "source_file"],
+        ),
+    },
+    {
+        "name": "save_checkpoint",
+        "description": (
+            "Save an intermediate deliverable snapshot to .checkpoints/ on disk. "
+            "Ensures work is preserved against unexpected container timeout or crash."
+        ),
+        "inputSchema": _schema(
+            {
+                "path": {"type": "string", "description": "Path to file inside container to snapshot"},
+                "stage_id": {"type": "string", "description": "Stage identifier e.g. structural_calc, mep_routing"},
+            },
+            ["path"],
+        ),
+    },
 ]
 
 
@@ -421,9 +453,57 @@ def verify_deliverable(path: str) -> list[dict[str, Any]]:
           f"TRIPLE-GATE VERIFICATION FAILED (Gate {result.get('gate')}):\n{v_str}\n\n"
           "Please edit/recompute the deliverable to satisfy all engineering constraints before finishing."
       )
+
+    # Automatically snapshot passed deliverable to .checkpoints/
+    try:
+      from checkpoints import CheckpointManager
+      mgr = CheckpointManager(os.path.join(WORKDIR, ".checkpoints"))
+      mgr.save_checkpoint("deliverable_verified", path, gate_passed=True)
+    except Exception:
+      pass
+
     return text(f"TRIPLE-GATE VERIFICATION PASSED: {result.get('message')}")
   except Exception as e:
     return text(f"Verification runtime error: {e}")
+
+
+def record_evidence(
+    fact_name: str,
+    value: Any,
+    unit: str,
+    source_file: str,
+    source_locator: str = "",
+    confidence: str = "CONFIRMED",
+) -> list[dict[str, Any]]:
+  """Records an extracted fact into the persistent Evidence Ledger."""
+  try:
+    from stage_contract import StageContractEngine
+    engine = StageContractEngine(os.path.join(WORKDIR, ".checkpoints", "project_state.json"))
+    fact_id = engine.record_evidence(
+        fact_name=fact_name,
+        value=value,
+        unit=unit,
+        source_file=source_file,
+        source_locator=source_locator,
+        confidence=confidence if confidence in ("CONFIRMED", "ESTIMATED", "SUPERSEDED") else "CONFIRMED",
+    )
+    return text(f"Recorded fact {fact_id} in Evidence Ledger: {fact_name} = {value} {unit} ({confidence})")
+  except Exception as e:
+    return text(f"Failed to record evidence: {e}")
+
+
+def save_checkpoint(path: str, stage_id: str = "general") -> list[dict[str, Any]]:
+  """Saves a versioned snapshot of a file to disk."""
+  path = resolve(path)
+  try:
+    from checkpoints import CheckpointManager
+    mgr = CheckpointManager(os.path.join(WORKDIR, ".checkpoints"))
+    saved = mgr.save_checkpoint(stage_id=stage_id, source_path=path, gate_passed=True)
+    if saved:
+      return text(f"Checkpoint saved successfully to {saved}")
+    return text(f"Could not save checkpoint for {path} (file missing or 0 bytes)")
+  except Exception as e:
+    return text(f"Checkpoint error: {e}")
 
 
 HANDLERS = {
@@ -432,6 +512,8 @@ HANDLERS = {
     "write_file": write_file,
     "edit_file": edit_file,
     "verify_deliverable": verify_deliverable,
+    "record_evidence": record_evidence,
+    "save_checkpoint": save_checkpoint,
 }
 _out = threading.Lock()
 

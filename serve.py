@@ -57,9 +57,13 @@ TASK_TOOLS = ("shell", "read_file", "write_file", "edit_file")
 CATALOG = (
     "gemini-4-argon",
     "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
+    "gemini-3.1-pro-preview",
     "gemini-3.1-pro",
+    "claude-opus-5-5",
+    "gpt-oss-120b",
+    "glm-5.2",
+    "gemma-4-26b",
+    "llama-4-maverick",
 )
 CUSTOM_SUFFIX = "-byom"
 AGY_RESERVE = 70_000
@@ -120,6 +124,12 @@ engineering tasks (structural, civil, electrical, mechanical).
 10. **Register Atomicity**: If `constraint_register.xlsx` is required, include all governing constraint
    families. Never put >8 numbers in any single row (violates `MAX_NUMS = 8`), and cite only the governing
    active code revision without revision history commentary.
+11. **Two-Level Feasibility -> Optimization Rule**:
+   - Level 1 (Feasibility First): Establish a safe, code-compliant design where every mandatory check passes (G = 1).
+   - Level 2 (Optimization): Only refine cost, weight, or energy efficiency after G = 1 is locked. Never risk a hard failure for minor cost gains.
+12. **Evidence Provenance & Checkpointing**:
+   - Use `record_evidence` to log confirmed drawing dimensions vs estimated parameters.
+   - Use `save_checkpoint` after drafting major deliverables so intermediate work is protected on disk.
 
 ## Task Classification (pre-computed)
 {classification}
@@ -407,6 +417,22 @@ async def solve(session: taskbridge.Session) -> str:
         and not any(run["texts"] for run in runs)
     ):
         raise RuntimeError(f"ple-agent: {runs[-1]['error']}")
+    # Progressive delivery guarantee: ensure any validated checkpoints are promoted
+    try:
+        from checkpoints import CheckpointManager
+        chk_dir = os.path.join(session.workdir, ".checkpoints")
+        if os.path.isdir(chk_dir):
+            mgr = CheckpointManager(chk_dir)
+            for rec in mgr.records:
+                orig = rec.get("original_path")
+                if orig and rec.get("gate_passed", False):
+                    p_orig = pathlib.Path(orig)
+                    if not p_orig.exists() or p_orig.stat().st_size == 0:
+                        mgr.promote_best_checkpoint(orig)
+                        await session.log(f"ple-agent: Promoted validated checkpoint to {orig}")
+    except Exception as exc:
+        await session.log(f"ple-agent: Checkpoint promotion advisory: {exc}")
+
     return session.final_message or NO_ANSWER
 
 
