@@ -121,16 +121,17 @@ def _keyword_classify(instruction: str) -> dict[str, Any]:
 
     # Discipline
     if any(k in text for k in ("seismic", "shear wall", "beam", "column", "footing",
-                                "steel", "concrete", "structural", "ifc", "bim")):
+                                "steel", "concrete", "structural", "ifc", "bim",
+                                "girder", "aisc", "lrfd", "truss", "slab", "rebar", "aci")):
         result["discipline"] = "structural"
     elif any(k in text for k in ("settlement", "boring", "soil", "clay", "grading",
-                                  "drainage", "pavement", "geotechnical", "civil")):
+                                  "drainage", "pavement", "geotechnical", "civil", "earthwork")):
         result["discipline"] = "civil"
     elif any(k in text for k in ("electrical", "nec", "circuit", "panel", "load calc",
-                                  "conduit", "voltage", "ampere", "switchboard")):
+                                  "conduit", "voltage", "ampere", "switchboard", "feeder")):
         result["discipline"] = "electrical"
     elif any(k in text for k in ("hvac", "cooling", "mechanical", "chiller", "duct",
-                                  "heat", "thermal", "ventilation", "pump")):
+                                  "heat", "thermal", "ventilation", "pump", "plumbing", "mep")):
         result["discipline"] = "mechanical"
 
     # Seismic
@@ -157,6 +158,12 @@ def _keyword_classify(instruction: str) -> dict[str, Any]:
         result["primary_code"] = "NFPA"
     elif "ibc" in text:
         result["primary_code"] = "IBC"
+    elif "aisc" in text:
+        result["primary_code"] = "AISC"
+    elif "aci" in text:
+        result["primary_code"] = "ACI"
+    elif "asce" in text:
+        result["primary_code"] = "ASCE7"
 
     # Deliverable
     if any(k in text for k in ("ifc", ".ifc", "bim", "revit", "3d model")):

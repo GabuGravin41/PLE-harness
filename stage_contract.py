@@ -214,7 +214,7 @@ class StageContractEngine:
         for downstream_id in contract.invalidates:
             if downstream_id in self.contracts:
                 downstream = self.contracts[downstream_id]
-                if downstream.status in ("ACCEPTED", "RUNNING", "VERIFYING"):
+                if downstream.status in ("ACCEPTED", "RUNNING", "VERIFYING", "READY"):
                     downstream.status = "PENDING"
                     downstream.notes = f"Upstream dependency {contract_id} invalidated."
                     invalidated_ids.append(downstream_id)
