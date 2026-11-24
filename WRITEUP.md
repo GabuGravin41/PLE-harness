@@ -1,6 +1,6 @@
 # PLE Harness: Engineering-Aware Agent with Deterministic Verification Loops
 
-**Commit SHA:** `92724203a199aceb2370cdb7a5c8d29ea8f8b1f1`  
+**Commit SHA:** `4483dfba6c5e4b8d142befe3d15a5676a3731e33`  
 **GitHub Repo:** `https://github.com/GabuGravin41/PLE-harness`  
 **Target Model:** `google-cloud/gemini-3.8-flash`  
 **License:** Apache-2.0  
