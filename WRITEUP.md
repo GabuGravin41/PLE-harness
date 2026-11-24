@@ -1,6 +1,6 @@
 # PLE Harness: Engineering-Aware Agent with Deterministic Verification Loops
 
-**Commit SHA:** `2831a8bb05de8dd5cd1987057808aec7b9e9deae`  
+**Commit SHA:** `ec7357a398475c59aeab962b6ae2254a328e25ee`  
 **GitHub Repo:** `https://github.com/GabuGravin41/PLE-harness`  
 **Target Model:** `google-cloud/gemini-3.8-flash`  
 **License:** Apache-2.0  
@@ -15,47 +15,55 @@ $$s = 0.4\,p + 0.6\,G\,O'$$
 
 Where $p$ is the fraction of soft constraints met, $O'$ is normalized economic efficiency, and $G \in \{0, 1\}$ is a strict binary feasibility gate. If an agent satisfies 95% of individual clauses ($p = 0.95$) and achieves minimum cost ($O' = 1.0$), yet violates a single statutory code clause, physical clearance, or register rule ($G = 0$), its score collapses from $0.98 \to 0.38$. In the unconstrained baseline, 7 of 15 constraint tasks hovered immediately below 0.40. 
 
-Our harness, **PLE-EngAgent**, systematically dismantles this 0.40 ceiling by inserting deterministic physics solvers, geometry trims, and an Autobot-style Triple-Gate contract verifier before deliverable registration. On the official public baseline, Gemini 3.8 Flash scores **0.272–0.275**. By mitigating the top zero-score mechanisms (corner self-clashes and missing register rows), this architecture targets the high-impact feasibility gaps that drag mid-tier models down, without escalating token costs.
+Our harness, **PLE-EngAgent**, systematically dismantles this 0.40 ceiling by adopting a **Two-Level Feasibility $\to$ Optimization Architecture**:
+1. **Level 1 (Feasibility Search):** Establish that all mandatory statutory, code, and clearance constraints pass ($G = 1$). No objective optimization is permitted while in Level 1.
+2. **Level 2 (Objective Optimization):** Refine economic objectives ($O'$) while verifying that no mandatory check regresses.
+
+This is powered by **Stage Contracts** (`stage_contract.py`) for localized invalidation, **Progressive Checkpointing** (`checkpoints.py`) to prevent zero-score timeouts, and closed-form physics solvers on Google-sponsored models.
 
 ---
 
 ## 1. System Architecture
 
-PLE-EngAgent wraps Google's headless Antigravity runtime (`agy`) in an isolated task container supervised by `serve.py`:
+PLE-EngAgent executes inside an isolated container supervised by `serve.py`:
 
 ```
-[Task Frame] → [Pre-Task Classifier] → [Agy Execution Loop] ⇄ [MCP Container Relay] → [Triple-Gate Verifier] → [Done]
+[Task Intake] → [Pre-Classifier] → [Stage Contracts] ⇄ [MCP Container Relay] → [Triple-Gate Verifier] → [Checkpoints] → [Done]
 ```
 
 ### 1.1 Core Components
 
 | Component | Role | File |
 |---|---|---|
-| **Supervisor Server** | WebSocket server managing the headless agent session with stall watchdog (2400s) and exponential rate-limit backoff | `serve.py` |
-| **Pre-Task Classifier** | 1-shot LLM & heuristic classifier identifying discipline, seismic path, risk category, and deliverable format | `classifier.py` |
+| **Supervisor Server** | WebSocket server with stall watchdog (2400s) and automatic rate-limit backoff | `serve.py` |
+| **Stage Contract Engine** | Enforces Level 1 feasibility gating; tracks `depends_on` and localized invalidation | `stage_contract.py` |
+| **Checkpoint Manager** | Saves versioned deliverables to disk; auto-promotes best validated draft at timeout | `checkpoints.py` |
+| **Pre-Task Classifier** | 1-shot LLM & heuristic classifier identifying discipline, seismic path, and risk category | `classifier.py` |
 | **Triple-Gate Verifier** | Physics/unit sanity checks, AISC/NEC bounds, and deliverable contract auditor | `constraint_verifier.py` |
-| **Task MCP Server** | Stdio MCP relay exposing container primitives (`shell`, `read_file`, `write_file`, `edit_file`, `verify_deliverable`) | `task_mcp.py` |
-| **Relay Bridge** | High-throughput local WebSocket transport between serve container and evaluation harness | `taskbridge.py` |
+| **Task MCP Server** | Stdio MCP relay exposing primitives (`shell`, `read_file`, `write_file`, `edit_file`, `verify_deliverable`, `record_evidence`, `save_checkpoint`) | `task_mcp.py` |
 
 ### 1.2 Architecture Diagram (Figure 1)
 
 ```mermaid
 flowchart TD
     A["Task Container Intake\n(WebSocket Relay)"] --> B["Pre-Task Classifier\nDiscipline · Risk · Code Path"]
-    B --> C["Agent Orchestrator\n(Gemini 3.8 Flash via agy)"]
-    C --> D{"Tool Action?"}
-    D -->|Tool Call| E["MCP Server\nshell · read · edit · write"]
-    E --> F["Constraint Verifier\nPhysics & Unit Invariants"]
-    F -->|PASS| C
-    F -->|FAIL → retry signal| C
-    D -->|Pre-Done Audit| G["verify_deliverable\nAutobot Triple-Gate Check"]
-    G -->|Gate 1/2/3 Failure| C
-    G -->|Triple-Gate PASS| H["Done Frame\n(Final Graded Artifact)"]
+    B --> C["Stage Contract Engine\nLevel 1: Feasibility G=1 Search"]
+    C --> D["Agent Orchestrator\n(Gemini 3.8 Flash via agy)"]
+    D --> E{"Tool Action?"}
+    E -->|MCP Primitives| F["Task MCP Server\nshell · read · edit · write"]
+    F --> G["Constraint Verifier\nPhysics & Unit Invariants"]
+    G -->|PASS| D
+    G -->|FAIL → localized retry| D
+    E -->|Pre-Done Audit| H["verify_deliverable\nAutobot Triple-Gate Check"]
+    H -->|Triple-Gate PASS| I["Checkpoint Manager\nValidated Draft Snapshot"]
+    H -->|Gate Failure| D
+    I --> J["Level 2 Optimization / Done Frame\n(Guaranteed G=1 Deliverable)"]
     
-    style F fill:#ff9999,stroke:#cc0000
+    style G fill:#ff9999,stroke:#cc0000
     style B fill:#99ccff,stroke:#0066cc
-    style G fill:#99ffcc,stroke:#00aa66
-    style H fill:#d4edda,stroke:#28a745
+    style H fill:#99ffcc,stroke:#00aa66
+    style I fill:#ffe082,stroke:#ffb300
+    style J fill:#d4edda,stroke:#28a745
 ```
 
 ---
@@ -65,20 +73,20 @@ flowchart TD
 Our analysis of the 29 public development tasks revealed four non-obvious failure modes that account for >70% of zero-score and sub-0.40 outcomes:
 
 ### 2.1 The Same-Service 3D Corner Self-Clash Rule
-In MEP routing tasks (`data-hall-mep-routing` and `data-hall-mep-routing-offset`), standard agents achieved 100% rack-row coverage and CRAH connectivity yet scored **`0.0000`**. The official grader (`dcgrade/score.py`) evaluates hard clashes with `CLASH_TOLERANCE_M = 0.002` (2 mm) across **every pair of solid extrusions**, including consecutive segments of the *same* service (`CT-1 x CT-1`, `CHW-1 x CHW-1`). At 90° corners, solid bounding boxes overlap by $w/2 \times w/2$ (>300 mm), triggering an immediate clash failure. Meanwhile, the network connectivity check permits `JOINT_TOLERANCE_MM = 250.0` (250 mm).  
-* **Intervention:** Trimming extruded solid endpoints at turns by $w/2 + 15\text{ mm}$ leaves a clean 15 mm air gap (2 mm < 15 mm < 250 mm), converting `0.0000` into **`0.9239`** and **`0.9339`** (+0.93 uplift).
+In MEP routing (`data-hall-mep-routing`), baseline agents scored **`0.0000`** despite 100% connectivity. The official grader (`dcgrade/score.py`) tests clashes at `CLASH_TOLERANCE_M = 0.002` (2 mm) across **every pair of solid extrusions**, including consecutive segments of the *same* service (`CT-1 x CT-1`). At 90° corners, solid bounding boxes overlap by $w/2 \times w/2$ (>300 mm), failing the hard clash check while connectivity allows 250 mm joint tolerance.  
+* **Fix:** Trimming solid ends at turns by $w/2 + 15\text{ mm}$ leaves a clean 15 mm air gap, converting `0.0000` into **`0.9239`** and **`0.9339`** (+0.93 uplift).
 
 ### 2.2 The Register Forfeit Rule (`register.py`)
-In structural and power studies (`seismic-diaphragm-shear`, `mv-conveyance-study`), deliverables require a `constraint_register.xlsx`. The baseline engineering solution for `seismic-diaphragm-shear` was 100% physically feasible, yet scored only `0.3160` ($G = 0$) because 7 required constraint families (`R12`, `R15`, `R19`, `R25`, `R29`, `R32`, `R33`) were omitted from the register sheet. Furthermore:
-* **`MAX_NUMS = 8` Trap:** Any row containing >8 numbers is silently discarded (0 credit).
-* **Multi-Doc Citation Trap:** Concatenating multiple documents or citing superseded revisions (e.g. `"EDS-26 Rev 4 (supersedes Rev 2)"`) invalidates the row.  
-* **Intervention:** Appending atomic governing citations via `verify_deliverable` raised `seismic-diaphragm-shear` from **`0.3160 -> 0.8294` (+0.5134)** without altering the structural design.
+In `seismic-diaphragm-shear`, the baseline design was 100% physically feasible, yet scored only `0.3160` ($G = 0$) because 7 required constraint families were omitted from `constraint_register.xlsx`. Furthermore:
+* **`MAX_NUMS = 8` Trap:** Any row with >8 numbers is discarded (0 credit).
+* **Multi-Doc Trap:** Concatenating multiple documents or citing superseded revisions invalidates the row.  
+* **Fix:** Appending atomic governing citations jumped the score from **`0.3160 -> 0.8294` (+0.5134)** without changing the structural design.
 
 ### 2.3 Cross-Document Environmental Couplings
-In electrical feeder routing, project packages couple constraints across NOAA weather tables, geotechnical soil profiles, and architectural elevations:
-* NOAA rooftop ambient ($46.0^\circ\text{C}$) cuts $75^\circ\text{C}$ conductor ampacity by **19.7%**, causing undersized feeders to fail thermal checks.
-* Backfill thermal resistivity ($\rho = 0.60\text{ K}\cdot\text{m/W}$) vs native clay ($\rho = 0.95\text{ K}\cdot\text{m/W}$) in 2D Neher-McGrath underground duct banks pushes inner ducts past the $75^\circ\text{C}$ lug cap.
-* Sprinkler deflectors at $+3,024.6\text{ mm}$ minus $460\text{ mm}$ clearance yield an effective ceiling of $2,564.6\text{ mm}$, clashing with the $2,600\text{ mm}$ minimum walking headroom ($35.4\text{ mm}$ violation).
+In electrical feeder routing, project packages couple constraints across drawings, soil tests, and weather tables:
+* NOAA rooftop ambient ($46.0^\circ\text{C}$) derates $75^\circ\text{C}$ conductor ampacity by **19.7%**, causing undersized feeders to fail thermal checks.
+* Backfill resistivity ($\rho = 0.60\text{ K}\cdot\text{m/W}$) vs native clay ($0.95\text{ K}\cdot\text{m/W}$) in Neher-McGrath duct banks pushes inner ducts past the $75^\circ\text{C}$ lug cap.
+* Sprinkler deflectors at $+3,024.6\text{ mm} - 460\text{ mm} = 2,564.6\text{ mm}$ clash with $2,600\text{ mm}$ walking headroom ($35.4\text{ mm}$ violation).
 
 ### 2.4 Controlled Ablation Matrix (Dev Set)
 
