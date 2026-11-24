@@ -115,58 +115,84 @@ def classify_task(instruction: str) -> dict[str, Any]:
 
 
 def _keyword_classify(instruction: str) -> dict[str, Any]:
-    """Keyword-based fallback classifier."""
+    """Robust keyword-based fallback classifier with word boundaries and scoring."""
     text = instruction.lower()
     result = dict(_DEFAULT)
 
-    # Discipline
-    if any(k in text for k in ("seismic", "shear wall", "beam", "column", "footing",
-                                "steel", "concrete", "structural", "ifc", "bim",
-                                "girder", "aisc", "lrfd", "truss", "slab", "rebar", "aci")):
-        result["discipline"] = "structural"
-    elif any(k in text for k in ("settlement", "boring", "soil", "clay", "grading",
-                                  "drainage", "pavement", "geotechnical", "civil", "earthwork")):
-        result["discipline"] = "civil"
-    elif any(k in text for k in ("electrical", "nec", "circuit", "panel", "load calc",
-                                  "conduit", "voltage", "ampere", "switchboard", "feeder")):
-        result["discipline"] = "electrical"
-    elif any(k in text for k in ("hvac", "cooling", "mechanical", "chiller", "duct",
-                                  "heat", "thermal", "ventilation", "pump", "plumbing", "mep")):
-        result["discipline"] = "mechanical"
+    def _matches(kw_list: tuple[str, ...]) -> int:
+        count = 0
+        for kw in kw_list:
+            if re.search(rf"\b{re.escape(kw)}\b", text, re.IGNORECASE):
+                count += 1
+        return count
+
+    # Discipline keyword dictionaries
+    structural_kw = (
+        "seismic", "shear wall", "beam", "column", "footing", "steel",
+        "concrete", "structural", "ifc", "bim", "girder", "aisc", "lrfd",
+        "truss", "slab", "rebar", "aci", "moment frame", "deflection"
+    )
+    civil_kw = (
+        "settlement", "boring", "soil", "clay", "grading", "drainage",
+        "pavement", "geotechnical", "civil", "earthwork", "slope", "retaining wall"
+    )
+    electrical_kw = (
+        "electrical", "nec", "circuit", "panel", "load calc", "conduit",
+        "voltage", "ampere", "ampacity", "switchboard", "feeder", "transformer",
+        "voltage drop", "breaker", "busbar", "3-phase", "480v", "208v", "120v"
+    )
+    mechanical_kw = (
+        "hvac", "cooling", "mechanical", "chiller", "duct", "heat",
+        "thermal", "ventilation", "pump", "plumbing", "mep", "airflow", "cfm"
+    )
+
+    scores = {
+        "structural": _matches(structural_kw),
+        "civil": _matches(civil_kw),
+        "electrical": _matches(electrical_kw),
+        "mechanical": _matches(mechanical_kw),
+    }
+
+    best_discipline = max(scores, key=lambda k: scores[k])
+    if scores[best_discipline] > 0:
+        result["discipline"] = best_discipline
 
     # Seismic
-    if any(k in text for k in ("seismic", "asce 7", "sdc", "spectral")):
+    if _matches(("seismic", "asce 7", "asce7", "sdc", "spectral")):
         result["seismic_path"] = "dynamic"
         result["primary_code"] = "ASCE7"
-        # Only simplified for clearly simple cases
-        if any(k in text for k in ("one-story", "single story", "sdc a", "sdc b")):
+        if _matches(("one-story", "single story", "sdc a", "sdc b")):
             if "hospital" not in text and "school" not in text:
                 result["seismic_path"] = "simplified"
 
     # Risk category
-    if any(k in text for k in ("hospital", "healthcare", "emergency", "fire station")):
+    if _matches(("hospital", "healthcare", "emergency", "fire station")):
         result["risk_category"] = 3
-    elif any(k in text for k in ("nuclear", "power plant", "water supply", "dam")):
+    elif _matches(("nuclear", "power plant", "water supply", "dam")):
         result["risk_category"] = 4
-    elif any(k in text for k in ("storage", "agricultural", "warehouse", "uninhabited")):
+    elif _matches(("storage", "agricultural", "warehouse", "uninhabited")):
         result["risk_category"] = 1
 
-    # Code
-    if "nec" in text or "nfpa 70" in text:
+    # Code detection with word boundaries
+    if _matches(("nec", "nfpa 70", "nfpa70")):
         result["primary_code"] = "NEC"
-    elif "nfpa" in text:
+    elif _matches(("nfpa",)):
         result["primary_code"] = "NFPA"
-    elif "ibc" in text:
+    elif _matches(("ibc",)):
         result["primary_code"] = "IBC"
-    elif "aisc" in text:
+    elif _matches(("aisc",)):
         result["primary_code"] = "AISC"
-    elif "aci" in text:
+    elif _matches(("aci",)):
         result["primary_code"] = "ACI"
-    elif "asce" in text:
+    elif _matches(("asce", "asce 7", "asce7")):
         result["primary_code"] = "ASCE7"
+    elif result["discipline"] == "electrical":
+        result["primary_code"] = "NEC"
+    elif result["discipline"] == "structural":
+        result["primary_code"] = "AISC"
 
     # Deliverable
-    if any(k in text for k in ("ifc", ".ifc", "bim", "revit", "3d model")):
+    if _matches(("ifc", "ifc4", "bim", "revit", "3d model")):
         result["deliverable_type"] = "ifc4_model"
     elif any(k in text for k in (".xlsx", "spreadsheet", "schedule")):
         result["deliverable_type"] = "xlsx_report"

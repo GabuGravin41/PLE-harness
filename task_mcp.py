@@ -35,7 +35,7 @@ import urllib.request
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import taskbridge  # pylint: disable=g-import-not-at-top,g-bad-import-order
 
-RELAY = os.environ["TASK_RELAY_URL"]
+RELAY = os.environ.get("TASK_RELAY_URL", "http://127.0.0.1:8765")
 WORKDIR = os.environ.get("TASK_WORKDIR", "/")
 MAX_TEXT = 40_000
 MAX_IMAGE = 5 << 20
